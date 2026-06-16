@@ -288,6 +288,17 @@ namespace PikunikuAPMod
             new CoinLoc(889153857,  432.0f, -50.7f,  "Valley: Coin above flower house"),
             new CoinLoc(889161219,  453.0f, -97.0f,  "Valley: Coin left under moving bridge"),
             new CoinLoc(889106873,  469.0f, -103.0f, "Valley: Coin right under moving bridge"),
+            new CoinLoc(889191034,  175.0f, -89.0f,  "Valley: Coin above lower cornfield 1"),
+            new CoinLoc(889123450,  177.0f, -89.0f,  "Valley: Coin above lower cornfield 2"),
+            new CoinLoc(889121971,  179.0f, -89.0f,  "Valley: Coin above lower cornfield 3"),
+            new CoinLoc(1199575527, 181.0f, -89.0f,  "Valley: Coin above lower cornfield 4"),
+            new CoinLoc(889188847,  158.4f, -77.8f,  "Valley: Coin in air between cornfields 1"),
+            new CoinLoc(889156023,  158.4f, -80.8f,  "Valley: Coin in air between cornfields 2"),
+            new CoinLoc(889186242,  172.0f, -74.0f,  "Valley: Coin above upper cornfield 1"),
+            new CoinLoc(889184443,  173.9f, -73.9f,  "Valley: Coin above upper cornfield 2"),
+            new CoinLoc(889118349,  175.9f, -73.9f,  "Valley: Coin above upper cornfield 3"),
+            new CoinLoc(889135973,  178.0f, -74.0f,  "Valley: Coin above upper cornfield 4"),
+            
 
             // ---- Apple Temple ----
             new CoinLoc(51908967,   11.4f,  7.1f,    "Apple Temple: Coin next to spring"),
@@ -343,6 +354,10 @@ namespace PikunikuAPMod
             new CoinLoc(70776915,   305.3f, -16.2f,  "Valley Road: Coin on zipline"),
             new CoinLoc(70776915,   320.4f, -29.1f,  "Valley Road: Coin on tree branch"),
             new CoinLoc(62192953,   334.8f, -41.2f,  "Valley Road: Coin near trees"),
+            new CoinLoc(2085386414, 144.0f, -98.0f,  "Valley Road: Coin in water hat area room 1"),
+            new CoinLoc(2092971986, 138.0f, -98.0f,  "Valley Road: Coin in water hat area room 2"),
+            new CoinLoc(649749052,  133.0f, -98.0f,  "Valley Road: Coin in water hat area room 3"),
+            new CoinLoc(2093405322, 128.6f, -98.0f,  "Valley Road: Coin in water hat area room 4"),
 
             // ---- The Forest ----
             new CoinLoc(1549184843, 55.0f,  -195.0f, "Forest: Coin on cut down log"),
@@ -394,22 +409,6 @@ namespace PikunikuAPMod
             new CoinLoc(1706505722, 354.2f, -17.1f,  "Frog Temple: Coin at nut bridge puzzle 1"),
             new CoinLoc(1706215749, 356.7f, -17.1f,  "Frog Temple: Coin at nut bridge puzzle 2"),
             new CoinLoc(1706088097, 359.3f, -17.1f,  "Frog Temple: Coin at nut bridge puzzle 3"),
-
-            // ---- The Valley (Revisited) ----
-            new CoinLoc(2085386414, 144.0f, -98.0f,  "Valley Road (Revisited): Coin in hidden hook room 1"),
-            new CoinLoc(2092971986, 138.0f, -98.0f,  "Valley Road (Revisited): Coin in hidden hook room 2"),
-            new CoinLoc(649749052,  133.0f, -98.0f,  "Valley Road (Revisited): Coin in hidden hook room 3"),
-            new CoinLoc(2093405322, 128.6f, -98.0f,  "Valley Road (Revisited): Coin in hidden hook room 4"),
-            new CoinLoc(889191034,  175.0f, -89.0f,  "Valley (Revisited): Coin above lower cornfield 1"),
-            new CoinLoc(889123450,  177.0f, -89.0f,  "Valley (Revisited): Coin above lower cornfield 2"),
-            new CoinLoc(889121971,  179.0f, -89.0f,  "Valley (Revisited): Coin above lower cornfield 3"),
-            new CoinLoc(1199575527, 181.0f, -89.0f,  "Valley (Revisited): Coin above lower cornfield 4"),
-            new CoinLoc(889188847,  158.4f, -77.8f,  "Valley (Revisited): Coin in air between cornfields 1"),
-            new CoinLoc(889156023,  158.4f, -80.8f,  "Valley (Revisited): Coin in air between cornfields 2"),
-            new CoinLoc(889186242,  172.0f, -74.0f,  "Valley (Revisited): Coin above upper cornfield 1"),
-            new CoinLoc(889184443,  173.9f, -73.9f,  "Valley (Revisited): Coin above upper cornfield 2"),
-            new CoinLoc(889118349,  175.9f, -73.9f,  "Valley (Revisited): Coin above upper cornfield 3"),
-            new CoinLoc(889135973,  178.0f, -74.0f,  "Valley (Revisited): Coin above upper cornfield 4"),
 
             // ---- The Cave ----
             new CoinLoc(73042658,   202.0f, -20.0f,  "Cave: Coin in spring tunnel 1"),

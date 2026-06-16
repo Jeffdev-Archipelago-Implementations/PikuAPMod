@@ -842,7 +842,11 @@ public class GameHandler : MonoBehaviour
                 _currentAppleLocation = "Apple from Bird Quest";
                 Log.Info("Apple being added from bird quest");
             }
-            // Otherwise it's the tree apple, which is handled by ObjectCatch_Start_Patch
+            else
+            {
+                _currentAppleLocation = "Apple in Tree";
+                Log.Info("Apple being added from tree");
+            }
         }
     }
 
