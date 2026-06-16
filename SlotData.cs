@@ -22,9 +22,7 @@ public class SlotData
             DeathLink = (int)(long)deathLink == 1;
         if (slotDict.TryGetValue("piku_color", out var pikuColor))
             PikuColor = (string)pikuColor;
-
-        // DeathLink tagging is applied by ArchipelagoHandler.Connect once this SlotData is assigned
-        // (so the YamlSetting config mode can read DeathLink here).
+        
         PikunikuAPMod.ItemHandler.FlushQueue();
     }
 }

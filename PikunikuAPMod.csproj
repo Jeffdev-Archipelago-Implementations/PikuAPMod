@@ -59,7 +59,6 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<!-- net35 lib folder bundles Archipelago.MultiClient.Net.dll, Newtonsoft.Json.dll and websocket-sharp.dll -->
 		<PikuDependencies Include="$(NuGetPackageRoot)archipelago.multiclient.net\6.7.0\lib\net35\*.dll" />
 	</ItemGroup>
 

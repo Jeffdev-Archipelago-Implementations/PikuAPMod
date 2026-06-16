@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -444,12 +445,6 @@ public class GameHandler : MonoBehaviour
         foreach (char c in s)
             sb.Append(char.IsLetterOrDigit(c) ? c : '_');
     }
-
-    /// <summary>Show a message in-game. Stub until a UI hook exists.</summary>
-    public void ShowMessage(string message)
-    {
-        // TODO: Hook into Pikuniku's UI to display AP log messages.
-    }
     
     // ===== Location lookups =====
 
@@ -475,9 +470,13 @@ public class GameHandler : MonoBehaviour
         _ => null,
     };
 
+    // Track which apple location we're currently at (set by scene-specific patches)
+    private static string _currentAppleLocation = null;
+
     private static string ObjectLocationName(int uniqueId) => uniqueId switch
     {
-        // Scarecrow Face (1358097203) is intentionally left vanilla: not a check.
+        // Apples use context tracking since they all share UniqueID 1632897859
+        1632897859 => _currentAppleLocation,
         132530138  => "A Video Game",
         1533686085 => "Magnetic Card",
         178453624  => "The Cabin Key",
@@ -664,6 +663,9 @@ public class GameHandler : MonoBehaviour
             {
                 Log.Info($"Sending AP Check for {locationName} ({id})");
                 PikunikuAPMod.ArchipelagoHandler.CheckLocation(id);
+                // Clear apple context after use
+                if (ObjectToAdd.UniqueID == 1632897859)
+                    _currentAppleLocation = null;
                 return false;
             }
 
@@ -724,14 +726,123 @@ public class GameHandler : MonoBehaviour
     {
         private static void Postfix(ObjectCatch __instance)
         {
-            if (__instance.obj == null
-                || !TryGetLocationId(ObjectLocationName(__instance.obj.UniqueID), out long id))
+            if (__instance.obj == null)
+                return;
+
+            // Handle apples: detect which apple location based on GameObject name or parent
+            if (__instance.obj.UniqueID == 1632897859)
+            {
+                DetectAppleLocation(__instance.gameObject);
+                var locName = _currentAppleLocation;
+                if (locName != null && TryGetLocationId(locName, out long appleId))
+                {
+                    if (IsChecked(appleId))
+                        __instance.gameObject.SetActive(false);
+                    else
+                        __instance.Collected = false;
+                }
+                return;
+            }
+
+            // Handle other objects normally
+            if (!TryGetLocationId(ObjectLocationName(__instance.obj.UniqueID), out long id))
                 return;
 
             if (IsChecked(id))
                 __instance.gameObject.SetActive(false);
             else
                 __instance.Collected = false; // stay catchable until the check is confirmed
+        }
+    }
+
+    // Detect which apple location based on scene context (for the tree apple ObjectCatch)
+    private static void DetectAppleLocation(GameObject appleObject)
+    {
+        if (appleObject == null)
+        {
+            _currentAppleLocation = null;
+            return;
+        }
+
+        var objName = appleObject.name?.ToLower() ?? "";
+        var parentName = appleObject.transform.parent?.name?.ToLower() ?? "";
+        var sceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+
+        Log.Debug($"Detecting apple location: obj='{objName}', parent='{parentName}', scene='{sceneName}'");
+
+        // The tree apple is the only one that's a static ObjectCatch pickup
+        _currentAppleLocation = "Apple in Tree";
+        Log.Info($"Detected apple location: {_currentAppleLocation}");
+    }
+
+    // Track which quest is currently giving items to differentiate quest-based apples
+    private static Event_MountainVillage_GiantBird _activeBirdQuest = null;
+    private static MountainVillage_PlayRock _activeRockQuest = null;
+
+    // Patch the bird quest to track when it's active
+    [HarmonyPatch(typeof(Event_MountainVillage_GiantBird), "EventsCoroutine")]
+    private class Event_MountainVillage_GiantBird_Track_Patch
+    {
+        private static IEnumerator Postfix(IEnumerator original, Event_MountainVillage_GiantBird __instance)
+        {
+            _activeBirdQuest = __instance;
+            try
+            {
+                while (original.MoveNext())
+                    yield return original.Current;
+            }
+            finally
+            {
+                _activeBirdQuest = null;
+            }
+        }
+    }
+
+    // Patch the hidden rock quest to track when it's active
+    [HarmonyPatch(typeof(MountainVillage_PlayRock), "EventsCoroutine")]
+    private class MountainVillage_PlayRock_Track_Patch
+    {
+        private static IEnumerator Postfix(IEnumerator original, MountainVillage_PlayRock __instance)
+        {
+            _activeRockQuest = __instance;
+            try
+            {
+                while (original.MoveNext())
+                    yield return original.Current;
+            }
+            finally
+            {
+                _activeRockQuest = null;
+            }
+        }
+    }
+
+    // Intercept InventoryManager._AddObjectWithAnimation to detect quest-based apple rewards
+    [HarmonyPatch(typeof(InventoryManager), nameof(InventoryManager._AddObjectWithAnimation))]
+    private class InventoryManager_AddObjectWithAnimation_AppleContext_Patch
+    {
+        private static void Prefix(Inventory_Object ObjectToAdd)
+        {
+            // Only process if it's an apple (UniqueID 1632897859)
+            if (ObjectToAdd == null || ObjectToAdd.UniqueID != 1632897859)
+                return;
+
+            // Log the current state for debugging
+            Log.Debug($"Apple being added - BirdQuest active: {_activeBirdQuest != null}, RockQuest active: {_activeRockQuest != null}");
+
+            // Determine which quest is giving this apple
+            // Check rock quest FIRST since it's more specific (always gives apple)
+            if (_activeRockQuest != null)
+            {
+                _currentAppleLocation = "Apple from Hidden Rock";
+                Log.Info("Apple being added from hidden rock quest");
+            }
+            else if (_activeBirdQuest != null)
+            {
+                _currentAppleLocation = "Apple from Bird Quest";
+                Log.Info("Apple being added from bird quest");
+            }
+            // Otherwise it's the tree apple, which is handled by ObjectCatch_Start_Patch
         }
     }
 

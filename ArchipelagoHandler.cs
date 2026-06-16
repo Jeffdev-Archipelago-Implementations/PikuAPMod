@@ -309,7 +309,6 @@ namespace PikunikuAPMod
         public void AddMessageToGameLog(string message)
         {
             Log.Message(message);
-            PikunikuAPMod.GameHandler?.ShowMessage(message);
             OnLogMessage?.Invoke(message);
         }
 
