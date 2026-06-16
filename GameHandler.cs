@@ -829,24 +829,29 @@ public class GameHandler : MonoBehaviour
 
             // Log the current state for debugging
             Log.Debug($"Apple being added - BirdQuest active: {_activeBirdQuest != null}, RockQuest active: {_activeRockQuest != null}");
+            
+            SendCheck("Apple from Hidden Rock");
+            SendCheck("Apple in Tree");
+            SendCheck("Apple from Bird Quest");
 
-            // Determine which quest is giving this apple
-            // Check rock quest FIRST since it's more specific (always gives apple)
-            if (_activeRockQuest != null)
-            {
-                _currentAppleLocation = "Apple from Hidden Rock";
-                Log.Info("Apple being added from hidden rock quest");
-            }
-            else if (_activeBirdQuest != null)
-            {
-                _currentAppleLocation = "Apple from Bird Quest";
-                Log.Info("Apple being added from bird quest");
-            }
-            else
-            {
-                _currentAppleLocation = "Apple in Tree";
-                Log.Info("Apple being added from tree");
-            }
+            // // Determine which quest is giving this apple
+            // // Check rock quest FIRST since it's more specific (always gives apple)
+            // if (_activeRockQuest != null)
+            // {
+            //     Log.Info("Apple being added from hidden rock quest");
+            //     SendCheck("Apple from Hidden Rock");
+            //     SendCheck("Apple in Tree");
+            //     SendCheck("Apple from Bird Quest");
+            //     _currentAppleLocation = null;
+            // }
+            // else if (_activeBirdQuest != null)
+            // {
+            //     Log.Info("Apple being added from bird quest");
+            //     SendCheck("Apple from Bird Quest");
+            //     SendCheck("Apple in Tree");
+            //     SendCheck("Apple from Hidden Rock");
+            //     _currentAppleLocation = null;
+            // }
         }
     }
 
