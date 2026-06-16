@@ -1,0 +1,8 @@
+{
+  "name": "Pikuniku_Archipelago",
+  "version_number": "0.1.0",
+  "website_url": "https://github.com/robotzurg/PikunikuAPMod",
+  "description": "Archipelago.gg implementation for Pikuniku",
+  "dependencies": [
+  ]
+}

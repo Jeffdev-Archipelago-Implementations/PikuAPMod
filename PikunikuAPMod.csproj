@@ -1,0 +1,104 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<!-- Pikuniku is Unity 2017.4.5f1 on the legacy Mono runtime (.NET 3.5-era), so net35 is required -->
+		<TargetFramework>net35</TargetFramework>
+		<LangVersion>latest</LangVersion>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+		<RestoreAdditionalProjectSources>
+			https://api.nuget.org/v3/index.json;
+			https://nuget.bepinex.dev/v3/index.json;
+			https://nuget.samboy.dev/v3/index.json
+		</RestoreAdditionalProjectSources>
+		<ProduceReferenceAssembly>False</ProduceReferenceAssembly>
+		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
+		<EnvFileContent Condition="Exists('$(MSBuildProjectDirectory)\.env')">$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)\.env'))</EnvFileContent>
+		<STEAM_PATH>$([System.Text.RegularExpressions.Regex]::Match($(EnvFileContent), `(?m)^STEAM_PATH\s*=\s*["']?([^"'\r\n]+)["']?`).Groups[1].Value)</STEAM_PATH>
+		<STEAM_PATH Condition="'$(STEAM_PATH)' == ''">C:\Program Files (x86)\Steam</STEAM_PATH>
+
+		<GAME_MANAGED>$(STEAM_PATH)\steamapps\common\Pikuniku\Pikuniku_Data\Managed</GAME_MANAGED>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<EmbeddedResource Include="Assets\archipelago_logo.png" />
+		<EmbeddedResource Include="Assets\pikuniku_coin_ap_logo.png" />
+		<EmbeddedResource Include="Assets\pikuniku_present_archipelago.png" />
+		<EmbeddedResource Include="Assets\pikuniku_present_archipelago_top.png" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Archipelago.MultiClient.Net" Version="6.7.0" />
+		<PackageReference Include="BepInEx.Analyzers" Version="1.*" PrivateAssets="all" />
+		<PackageReference Include="BepInEx.Core" Version="5.*" />
+		<PackageReference Include="Krafs.Publicizer" Version="2.3.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<!-- Provides .NET Framework 3.5 reference assemblies so the build works without the old targeting pack -->
+		<PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+
+		<!-- Reference the game's own Unity 2017.4.5f1 assemblies (facade + modules + UI) -->
+		<Reference Include="$(GAME_MANAGED)\UnityEngine*.dll" Private="false" />
+		<Reference Include="TextMeshPro-2017.3-1.0.56-Runtime" Condition="Exists('$(GAME_MANAGED)\TextMeshPro-2017.3-1.0.56-Runtime.dll')" Private="false">
+			<HintPath>$(GAME_MANAGED)\TextMeshPro-2017.3-1.0.56-Runtime.dll</HintPath>
+		</Reference>
+		<Reference Include="Assembly-CSharp" Condition="Exists('$(GAME_MANAGED)\Assembly-CSharp.dll')" Private="false">
+			<HintPath>$(GAME_MANAGED)\Assembly-CSharp.dll</HintPath>
+		</Reference>
+		<Publicize Include="Assembly-CSharp" Condition="Exists('$(GAME_MANAGED)\Assembly-CSharp.dll')" />
+		<Reference Include="Assembly-CSharp-firstpass" Condition="Exists('$(GAME_MANAGED)\Assembly-CSharp-firstpass.dll')" Private="false">
+			<HintPath>$(GAME_MANAGED)\Assembly-CSharp-firstpass.dll</HintPath>
+		</Reference>
+		<Reference Include="Rewired_Core" Condition="Exists('$(GAME_MANAGED)\Rewired_Core.dll')" Private="false">
+			<HintPath>$(GAME_MANAGED)\Rewired_Core.dll</HintPath>
+		</Reference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PluginFiles Include="$(ProjectDir)Package\Pikuniku_Archipelago\**\*" />
+	</ItemGroup>
+
+	<!-- Bake the built DLL path into Debug builds so F2 hot reload knows what to load -->
+	<Target Name="GenHotReloadPath" BeforeTargets="BeforeCompile" Condition="'$(Configuration)' == 'Debug'">
+		<WriteLinesToFile
+			File="$(IntermediateOutputPath)HotReloadPath.g.cs"
+			Overwrite="true"
+			Lines="namespace PikunikuAPMod { internal static class HotReloadPath { public const string DllPath = @&quot;$(TargetPath)&quot;%3B } }"
+		/>
+		<ItemGroup>
+			<Compile Include="$(IntermediateOutputPath)HotReloadPath.g.cs" />
+		</ItemGroup>
+	</Target>
+
+	<ItemGroup>
+		<!-- net35 lib folder bundles Archipelago.MultiClient.Net.dll, Newtonsoft.Json.dll and websocket-sharp.dll -->
+		<PikuDependencies Include="$(NuGetPackageRoot)archipelago.multiclient.net\6.7.0\lib\net35\*.dll" />
+	</ItemGroup>
+
+	<Target Name="PostBuild" AfterTargets="PostBuildEvent" Condition="'$(OS)' == 'Windows_NT'">
+		<MakeDir Directories="$(ProjectDir)Package\Pikuniku_Archipelago" />
+		<MakeDir Directories="$(ProjectDir)output" />
+
+		<Copy
+			SourceFiles="$(TargetPath)"
+			DestinationFolder="$(ProjectDir)Package\Pikuniku_Archipelago"
+			OverwriteReadOnlyFiles="true"
+		/>
+
+		<Copy
+			SourceFiles="@(PikuDependencies)"
+			DestinationFolder="$(ProjectDir)Package\Pikuniku_Archipelago"
+			OverwriteReadOnlyFiles="true"
+		/>
+
+		<Copy
+			SourceFiles="@(PluginFiles)"
+			DestinationFolder="$(STEAM_PATH)\steamapps\common\Pikuniku\BepInEx\plugins\PikunikuAPMod"
+			OverwriteReadOnlyFiles="true"
+			ContinueOnError="true"
+		/>
+
+		<Exec Command="powershell -Command &quot;Compress-Archive -Path '$(ProjectDir)Package\*' -DestinationPath '$(ProjectDir)\output\Pikuniku_Archipelago_TS.zip' -Force&quot;" />
+		<Exec Command="powershell -Command &quot;Compress-Archive -Path '$(ProjectDir)Package\Pikuniku_Archipelago\*' -DestinationPath '$(ProjectDir)output\PikunikuAPMod.zip' -Force&quot;" />
+	</Target>
+</Project>

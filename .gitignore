@@ -1,55 +1,42 @@
-# Prerequisites
-*.d
+## Get latest from https://github.com/github/gitignore/blob/main/Dotnet.gitignore
 
-# Object files
-*.o
-*.ko
-*.obj
-*.elf
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
 
-# Linker output
-*.ilk
-*.map
-*.exp
+# .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
 
-# Precompiled Headers
-*.gch
-*.pch
+# NuGet Packages
+*.nupkg
+*.snupkg
 
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
+# Others
+~$*
+*~
+CodeCoverage/
 
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
+# MSBuild Binary and Structured Log
+*.binlog
 
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
+# Local config / game files
+.env
+Assembly-CSharp.dll
 
-# Debug files
-*.dSYM/
-*.su
-*.idb
-*.pdb
-
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
-
-# debug information files
-*.dwo
+# Packaged output
+/output/*.zip
+/Package/Pikuniku_Archipelago/*.dll
