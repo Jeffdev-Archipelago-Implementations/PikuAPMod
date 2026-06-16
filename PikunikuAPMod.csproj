@@ -58,18 +58,6 @@
 		<PluginFiles Include="$(ProjectDir)Package\Pikuniku_Archipelago\**\*" />
 	</ItemGroup>
 
-	<!-- Bake the built DLL path into Debug builds so F2 hot reload knows what to load -->
-	<Target Name="GenHotReloadPath" BeforeTargets="BeforeCompile" Condition="'$(Configuration)' == 'Debug'">
-		<WriteLinesToFile
-			File="$(IntermediateOutputPath)HotReloadPath.g.cs"
-			Overwrite="true"
-			Lines="namespace PikunikuAPMod { internal static class HotReloadPath { public const string DllPath = @&quot;$(TargetPath)&quot;%3B } }"
-		/>
-		<ItemGroup>
-			<Compile Include="$(IntermediateOutputPath)HotReloadPath.g.cs" />
-		</ItemGroup>
-	</Target>
-
 	<ItemGroup>
 		<!-- net35 lib folder bundles Archipelago.MultiClient.Net.dll, Newtonsoft.Json.dll and websocket-sharp.dll -->
 		<PikuDependencies Include="$(NuGetPackageRoot)archipelago.multiclient.net\6.7.0\lib\net35\*.dll" />
