@@ -16,6 +16,23 @@ public class GameHandler : MonoBehaviour
     // The scarecrow face is kept fully vanilla: never a check, grant, or AP popup override.
     private const int ScarecrowFaceId = 1358097203;
 
+    private void Awake()
+    {
+        UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoaded;
+    }
+
+    private void OnDestroy()
+    {
+        UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnSceneLoaded;
+    }
+
+    private static void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene,
+        UnityEngine.SceneManagement.LoadSceneMode _)
+    {
+        if (scene.name == "66_PROLOGUE")
+            PikunikuAPMod.ClientView?.QueueMessage("Tip: Press F2 to skip the intro, and press F1 to unstuck yourself.");
+    }
+
     private void Start() { }
 
     private void Update()
@@ -27,6 +44,9 @@ public class GameHandler : MonoBehaviour
         // F1: reload the current area back to its start.
         if (Input.GetKeyDown(KeyCode.F1))
             ForceRestartArea();
+        
+        if (Input.GetKeyDown((KeyCode.F2)))
+            TrySkipCutscene();
 
         // Apply a received DeathLink on the main thread (flagged from the socket thread).
         if (_pendingDeathLinkKill)
@@ -36,12 +56,34 @@ public class GameHandler : MonoBehaviour
         }
     }
 
+    // MainStory_Const.INTRO_WAKEUP = 0, MOUNTAIN_WHEREAREYOU = 2
+    private const int StorySegment_WakeUp = 0;
+    private const int StorySegment_WhereAmI = 2;
+
+    private static void TrySkipCutscene()
+    {
+        string scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+
+        if (scene == "66_PROLOGUE")
+        {
+            if (MainStory_Manager.S != null) return;
+            Log.Message("Skipping prologue cutscene -> Mountain Village");
+            if (MainStory_Manager.S != null) MainStory_Manager.S.CurrentSegment = StorySegment_WhereAmI;
+            UnityEngine.SceneManagement.SceneManager.LoadScene("02_MOUNTAINVILLAGE");
+            return;
+        }
+    }
+
     private static void ForceRestartArea()
     {
         if (LevelSpecific.S == null || TransitionModule.S == null || TransitionModule.S.isPlaying)
             return;
-        Log.Message("Force restart: reloading current area");
-        TransitionModule.S.SceneTransition_Smooth(GameManager.CurrentSceneName, ShouldSave: false);
+
+        string current = GameManager.CurrentSceneName;
+        string target = current == "04_MINE" ? "04.1_LAKE" : current;
+
+        Log.Message($"Force restart: loading '{target}'");
+        TransitionModule.S.SceneTransition_Smooth(target, ShouldSave: false);
     }
 
     private static void DumpIds()
@@ -314,17 +356,23 @@ public class GameHandler : MonoBehaviour
                 _apLogoTex = LoadEmbeddedTexture("PikunikuAPMod.Assets.archipelago_logo.png");
             if (_apLogoTex != null) _apLogoMat = MakeUnlitMaterial(_apLogoTex);
         }
-        
+
         if (_apLogoMat != null && inv.Anim_meshFilter != null && inv.Anim_meshRenderer != null)
         {
             var src = inv.Anim_meshFilter.sharedMesh;
             if (src != null)
+            {
+                // Clear rotation so the logo isn't skewed, but keep the scale the game already
+                // set on Anim_ObjectRect — it sized the real item correctly and will do the same
+                // for our logo quad.
+                if (inv.Anim_ObjectRect != null)
+                    inv.Anim_ObjectRect.localEulerAngles = Vector3.zero;
+
                 inv.Anim_meshFilter.sharedMesh = CreateQuadMeshForTexture(src.bounds.size, _apLogoTex);
+            }
             inv.Anim_meshRenderer.sharedMaterial = _apLogoMat;
-            if (inv.Anim_ObjectRect != null)
-                inv.Anim_ObjectRect.localEulerAngles = Vector3.zero;
         }
-        
+
         var at = inv.Anim_AutoText;
         if (at != null && at.text != null)
         {
@@ -470,13 +518,21 @@ public class GameHandler : MonoBehaviour
         _ => null,
     };
 
-    // Track which apple location we're currently at (set by scene-specific patches)
-    private static string _currentAppleLocation = null;
+    // Counts how many apple checks the player has sent this session (index into "Apple 1/2/3").
+    // Not reset on scene load; synced up from AP's confirmed state lazily in NextAppleLocationName.
+    private static int _appleCheckIndex = 0;
+
+    private static string NextAppleLocationName()
+    {
+        if (TryGetLocationId("Apple 1", out long a1) && IsChecked(a1) && _appleCheckIndex < 1) _appleCheckIndex = 1;
+        if (TryGetLocationId("Apple 2", out long a2) && IsChecked(a2) && _appleCheckIndex < 2) _appleCheckIndex = 2;
+        if (TryGetLocationId("Apple 3", out long a3) && IsChecked(a3) && _appleCheckIndex < 3) _appleCheckIndex = 3;
+        return _appleCheckIndex < 3 ? "Apple " + (_appleCheckIndex + 1) : null;
+    }
 
     private static string ObjectLocationName(int uniqueId) => uniqueId switch
     {
-        // Apples use context tracking since they all share UniqueID 1632897859
-        1632897859 => _currentAppleLocation,
+        1632897859 => NextAppleLocationName(),
         132530138  => "A Video Game",
         1533686085 => "Magnetic Card",
         178453624  => "The Cabin Key",
@@ -663,9 +719,8 @@ public class GameHandler : MonoBehaviour
             {
                 Log.Info($"Sending AP Check for {locationName} ({id})");
                 PikunikuAPMod.ArchipelagoHandler.CheckLocation(id);
-                // Clear apple context after use
                 if (ObjectToAdd.UniqueID == 1632897859)
-                    _currentAppleLocation = null;
+                    _appleCheckIndex++;
                 return false;
             }
 
@@ -729,18 +784,13 @@ public class GameHandler : MonoBehaviour
             if (__instance.obj == null)
                 return;
 
-            // Handle apples: detect which apple location based on GameObject name or parent
+            // Handle apples: hide only when all 3 checks are done, otherwise keep catchable.
             if (__instance.obj.UniqueID == 1632897859)
             {
-                DetectAppleLocation(__instance.gameObject);
-                var locName = _currentAppleLocation;
-                if (locName != null && TryGetLocationId(locName, out long appleId))
-                {
-                    if (IsChecked(appleId))
-                        __instance.gameObject.SetActive(false);
-                    else
-                        __instance.Collected = false;
-                }
+                if (NextAppleLocationName() == null)
+                    __instance.gameObject.SetActive(false);
+                else
+                    __instance.Collected = false;
                 return;
             }
 
@@ -752,106 +802,6 @@ public class GameHandler : MonoBehaviour
                 __instance.gameObject.SetActive(false);
             else
                 __instance.Collected = false; // stay catchable until the check is confirmed
-        }
-    }
-
-    // Detect which apple location based on scene context (for the tree apple ObjectCatch)
-    private static void DetectAppleLocation(GameObject appleObject)
-    {
-        if (appleObject == null)
-        {
-            _currentAppleLocation = null;
-            return;
-        }
-
-        var objName = appleObject.name?.ToLower() ?? "";
-        var parentName = appleObject.transform.parent?.name?.ToLower() ?? "";
-        var sceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
-
-        Log.Debug($"Detecting apple location: obj='{objName}', parent='{parentName}', scene='{sceneName}'");
-
-        // The tree apple is the only one that's a static ObjectCatch pickup
-        _currentAppleLocation = "Apple in Tree";
-        Log.Info($"Detected apple location: {_currentAppleLocation}");
-    }
-
-    // Track which quest is currently giving items to differentiate quest-based apples
-    private static Event_MountainVillage_GiantBird _activeBirdQuest = null;
-    private static MountainVillage_PlayRock _activeRockQuest = null;
-
-    // Patch the bird quest to track when it's active
-    [HarmonyPatch(typeof(Event_MountainVillage_GiantBird), "EventsCoroutine")]
-    private class Event_MountainVillage_GiantBird_Track_Patch
-    {
-        private static IEnumerator Postfix(IEnumerator original, Event_MountainVillage_GiantBird __instance)
-        {
-            _activeBirdQuest = __instance;
-            try
-            {
-                while (original.MoveNext())
-                    yield return original.Current;
-            }
-            finally
-            {
-                _activeBirdQuest = null;
-            }
-        }
-    }
-
-    // Patch the hidden rock quest to track when it's active
-    [HarmonyPatch(typeof(MountainVillage_PlayRock), "EventsCoroutine")]
-    private class MountainVillage_PlayRock_Track_Patch
-    {
-        private static IEnumerator Postfix(IEnumerator original, MountainVillage_PlayRock __instance)
-        {
-            _activeRockQuest = __instance;
-            try
-            {
-                while (original.MoveNext())
-                    yield return original.Current;
-            }
-            finally
-            {
-                _activeRockQuest = null;
-            }
-        }
-    }
-
-    // Intercept InventoryManager._AddObjectWithAnimation to detect quest-based apple rewards
-    [HarmonyPatch(typeof(InventoryManager), nameof(InventoryManager._AddObjectWithAnimation))]
-    private class InventoryManager_AddObjectWithAnimation_AppleContext_Patch
-    {
-        private static void Prefix(Inventory_Object ObjectToAdd)
-        {
-            // Only process if it's an apple (UniqueID 1632897859)
-            if (ObjectToAdd == null || ObjectToAdd.UniqueID != 1632897859)
-                return;
-
-            // Log the current state for debugging
-            Log.Debug($"Apple being added - BirdQuest active: {_activeBirdQuest != null}, RockQuest active: {_activeRockQuest != null}");
-            
-            SendCheck("Apple from Hidden Rock");
-            SendCheck("Apple in Tree");
-            SendCheck("Apple from Bird Quest");
-
-            // // Determine which quest is giving this apple
-            // // Check rock quest FIRST since it's more specific (always gives apple)
-            // if (_activeRockQuest != null)
-            // {
-            //     Log.Info("Apple being added from hidden rock quest");
-            //     SendCheck("Apple from Hidden Rock");
-            //     SendCheck("Apple in Tree");
-            //     SendCheck("Apple from Bird Quest");
-            //     _currentAppleLocation = null;
-            // }
-            // else if (_activeBirdQuest != null)
-            // {
-            //     Log.Info("Apple being added from bird quest");
-            //     SendCheck("Apple from Bird Quest");
-            //     SendCheck("Apple in Tree");
-            //     SendCheck("Apple from Hidden Rock");
-            //     _currentAppleLocation = null;
-            // }
         }
     }
 
@@ -867,7 +817,7 @@ public class GameHandler : MonoBehaviour
 
             if (IsChecked(id))
             {
-                // Already sent — vanilla "you already played it" branch.
+                // Already sent - vanilla "you already played it" branch.
                 __instance.worm.dialogueModule.customCoroutineDial = null;
                 __instance.worm.SetDialogues(Mine_ComputerRoom.dial_checkPlayed);
             }

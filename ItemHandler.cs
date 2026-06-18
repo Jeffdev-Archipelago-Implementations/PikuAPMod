@@ -222,6 +222,8 @@ public class ItemHandler : MonoBehaviour
 
                 yield return ShowPopup(next);
             }
+            // Save once after the entire queue is drained, not after each individual item.
+            PikunikuAPMod.SaveDataHandler?.SaveGame();
         }
         finally
         {
@@ -300,10 +302,7 @@ public class ItemHandler : MonoBehaviour
         {
             var saveData = PikunikuAPMod.SaveDataHandler?.SaveData;
             if (saveData != null && index >= saveData.ItemIndex)
-            {
                 saveData.ItemIndex = index + 1;
-                PikunikuAPMod.SaveDataHandler.SaveGame();
-            }
         }
         catch (Exception ex)
         {
@@ -358,19 +357,19 @@ public class ItemHandler : MonoBehaviour
     {
         switch (itemName)
         {
-            case "Walking Piku":         trophyId = Trophies.WALKING_PIKU; return true;
-            case "The Hidden Rock":      trophyId = Trophies.HIDDEN_ROCK;  return true;
-            case "Baskick Champion":     trophyId = Trophies.BASKICK;      return true;
-            case "Sam the Slime":        trophyId = Trophies.SAM_SLIME;    return true;
-            case "The Resistance":       trophyId = Trophies.RESISTANCE;   return true;
-            case "A Giant Robot":        trophyId = Trophies.GIANT_ROBOT;  return true;
-            case "The Demonic Toast":    trophyId = Trophies.GIANT_TOAST;  return true;
-            case "PikDug":               trophyId = Trophies.PIKDUG;       return true;
-            case "Piku at the Beach":    trophyId = Trophies.BEACH;        return true;
-            case "The Worms":            trophyId = Trophies.WORMS;        return true;
-            case "Ernie the Worm":       trophyId = Trophies.ERNIE;        return true;
-            case "Sunshine Inc. Robot":  trophyId = Trophies.ROBOT;        return true;
-            case "Mr. Sunshine":         trophyId = Trophies.MR_SUNSHINE;  return true;
+            case "Walking Piku Trophy":         trophyId = Trophies.WALKING_PIKU; return true;
+            case "The Hidden Rock Trophy":      trophyId = Trophies.HIDDEN_ROCK;  return true;
+            case "Baskick Champion Trophy":     trophyId = Trophies.BASKICK;      return true;
+            case "Sam the Slime Trophy":        trophyId = Trophies.SAM_SLIME;    return true;
+            case "The Resistance Trophy":       trophyId = Trophies.RESISTANCE;   return true;
+            case "A Giant Robot Trophy":        trophyId = Trophies.GIANT_ROBOT;  return true;
+            case "The Demonic Toast Trophy":    trophyId = Trophies.GIANT_TOAST;  return true;
+            case "PikDug Trophy":               trophyId = Trophies.PIKDUG;       return true;
+            case "Piku at the Beach Trophy":    trophyId = Trophies.BEACH;        return true;
+            case "The Worms Trophy":            trophyId = Trophies.WORMS;        return true;
+            case "Ernie the Worm Trophy":       trophyId = Trophies.ERNIE;        return true;
+            case "Sunshine Inc. Robot Trophy":  trophyId = Trophies.ROBOT;        return true;
+            case "Mr. Sunshine Trophy":         trophyId = Trophies.MR_SUNSHINE;  return true;
             case "Piku & Niku I Trophy":   trophyId = Trophies.PIKU_NIKU_1; return true;
             case "Piku & Niku II Trophy":  trophyId = Trophies.PIKU_NIKU_2; return true;
             case "Piku & Niku III Trophy": trophyId = Trophies.PIKU_NIKU_3; return true;

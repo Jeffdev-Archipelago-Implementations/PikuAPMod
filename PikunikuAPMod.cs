@@ -17,7 +17,7 @@ namespace PikunikuAPMod
     {
         private const string PluginGuid = "PikunikuAPMod";
         private const string PluginName = "Pikuniku Archipelago Mod";
-        private const string PluginVersion = "0.2.1";
+        private const string PluginVersion = "0.3.0";
         private const string PluginAuthor = "Jeffdev";
         public static string PluginDir;
         private readonly Harmony harmony = new(PluginGuid);
@@ -30,8 +30,6 @@ namespace PikunikuAPMod
         public static ClientView ClientView { get; private set; }
         public static SaveDataHandler SaveDataHandler { get; private set; }
 
-        // Caches assemblies we force-load from our plugin folder so the resolver
-        // returns the same instance every time it's asked.
         private static readonly Dictionary<string, Assembly> _resolvedDeps = new();
 
         public void Awake()

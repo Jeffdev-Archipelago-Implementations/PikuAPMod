@@ -28,6 +28,7 @@ public class ClientView : MonoBehaviour
     private bool _built;
 
     private volatile bool _wantVisible;
+    private float _systemMessageUntil;
 
     private class Message
     {
@@ -71,20 +72,25 @@ public class ClientView : MonoBehaviour
     private void OnConnected()    => _wantVisible = true;
     private void OnDisconnected() => _wantVisible = false;
 
+    public void QueueMessage(string text)
+    {
+        lock (_lock) _incoming.Enqueue(text);
+        _systemMessageUntil = Mathf.Max(_systemMessageUntil, Time.unscaledTime + MessageLifetime);
+    }
+
     private void Update()
     {
-        // Build lazily once visible, so the game's TMP font exists by then.
-        if (_wantVisible && !_built)
+        float now = Time.unscaledTime;
+        bool shouldShow = _wantVisible || now < _systemMessageUntil;
+
+        if (shouldShow && !_built)
             Build();
 
         if (!_built)
             return;
 
-        if (_canvas.enabled != _wantVisible)
-            _canvas.enabled = _wantVisible;
-
-        // Unscaled time so lines still expire/animate while paused.
-        float now = Time.unscaledTime;
+        if (_canvas.enabled != shouldShow)
+            _canvas.enabled = shouldShow;
 
         lock (_lock)
         {
