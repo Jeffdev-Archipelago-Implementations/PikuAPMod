@@ -17,7 +17,7 @@ namespace PikunikuAPMod
     {
         private const string PluginGuid = "PikunikuAPMod";
         private const string PluginName = "Pikuniku Archipelago Mod";
-        private const string PluginVersion = "0.3.0";
+        private const string PluginVersion = "0.3.1";
         private const string PluginAuthor = "Jeffdev";
         public static string PluginDir;
         private readonly Harmony harmony = new(PluginGuid);
@@ -36,7 +36,12 @@ namespace PikunikuAPMod
         {
             PluginDir = Path.GetDirectoryName(Info.Location);
             Log.Init(Logger);
-            
+#if DEBUG
+            Log.Message($"{PluginName} v{PluginVersion} — DEBUG build");
+#else
+            Log.Message($"{PluginName} v{PluginVersion} — Release build");
+#endif
+
             SetupDependencyResolver();
 
             Application.runInBackground = true;

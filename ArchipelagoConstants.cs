@@ -3,6 +3,80 @@ using System.Collections.ObjectModel;
 
 namespace PikunikuAPMod
 {
+    public static class Scenes
+    {
+        public const string TitleScreen   = "00_TITLESCREEN";
+        public const string Prologue      = "66_PROLOGUE";
+        public const string MountainVillage   = "02_MOUNTAINVILLAGE";
+        public const string ValleyRoad        = "02.1_MOUNTAINVILLAGETOFOREST";
+        public const string MountainTemple    = "02.2_MOUNTAIN_TEMPLE";
+        public const string MountainBoss      = "02.3_MOUNTAIN_ROBOTBOSS";
+        public const string MountainMetro     = "02.4_MOUNTAIN_METRO";
+        public const string Forest            = "03_FOREST";
+        public const string ForestDanceBattle = "03.1_FOREST_DANCEBATTLE";
+        public const string ForestTemple      = "03.2_FOREST_TEMPLE";
+        public const string ForestBoss        = "03.3_FOREST_ROBOTBOSS";
+        public const string ForestMetro       = "03.4_FOREST_METRO";
+        public const string ForestTartineZone = "03.5_FOREST_TARTINEZONE";
+        public const string Lake              = "04.1_LAKE";
+        public const string Mine              = "04_MINE";
+        public const string LakeBoss          = "04.2_LAKE_ROBOTBOSS";
+        public const string HQ                = "05_HQ";
+        public const string HQFinalBoss       = "05.1_HQ_FINALBOSS";
+        public const string Beach             = "07_BEACH";
+    }
+
+    public static class StorySegments
+    {
+        public const int INTRO_WAKEUP = 0;
+        public const int INTRO_FINDWAYOUT = 1;
+        public const int MOUNTAIN_WHEREAREYOU = 2;
+        public const int MOUNTAIN_REPAIRBRIDGE = 3;
+        public const int MOUNTAIN_BACKTOVILLAGE = 4;
+        public const int MOUNTAIN_TALKTOPAINTER = 5;
+        public const int MOUNTAIN_FINDPENCILHAT = 6;
+        public const int MOUNTAIN_GIVEPENCILHATBACK = 7;
+        public const int MOUNTAIN_DRAWSCARECROW = 8;
+        public const int MOUNTAIN_PUTFACEONSCARECROW = 9;
+        public const int MOUNTAIN_EXPLOREWORLD = 10;
+        public const int MOUNTAIN_EXPLOREWORLD2 = 11;
+        public const int FOREST_HELPVILLAGERSINTREE1 = 12;
+        public const int FOREST_HELPVILLAGERSINTREE2_ROCK = 13;
+        public const int FOREST_HELPVILLAGERSINTREE2 = 14;
+        public const int FOREST_GOMEETPOINT = 15;
+        public const int FOREST_GOTOCLUB = 16;
+        public const int FOREST_GETSWAGGY = 17;
+        public const int FOREST_ENTERCLUB = 18;
+        public const int FOREST_CHALLENGEROBOT = 19;
+        public const int FOREST_TALKTORESISTANCE = 20;
+        public const int FOREST_FINDPURPOSECARD = 21;
+        public const int FOREST_FOLLOWTHEREBELS = 22;
+        public const int FOREST_BEATROBOT = 23;
+        public const int FOREST_CELEBRATEVICTORY = 24;
+        public const int FOREST_CELEBRATEVICTORY2 = 25;
+        public const int MOUNTAIN_GETBACKMOUNTAIN = 26;
+        public const int MOUNTAIN_BEATGIANTROBOT = 27;
+        public const int FOREST_CELEBRATEVICTORYMOUNTAINBOSS = 28;
+        public const int FOREST_FIXELECTRICITY = 29;
+        public const int FOREST_GOTOTHELAKE = 30;
+        public const int LAKE_INSPECT = 31;
+        public const int LAKE_FINDKEY = 32;
+        public const int LAKE_ENTERMINE = 33;
+        public const int MINE_FOLLOWWORM = 34;
+        public const int MINE_FOLLOWWORM2 = 35;
+        public const int MINE_FINDERNIE = 36;
+        public const int MINE_BRINGBACKERNIE = 37;
+        public const int MINE_TALKTOREBELS = 38;
+        public const int LAKE_FIGHTROBOT = 39;
+        public const int HQ_OOPS = 40;
+        public const int HQ_ARCHDPT1 = 41;
+        public const int HQ_ARCHDPT2 = 42;
+        public const int HQ_ESCAPE3 = 43;
+        public const int HQ_ESCAPE_HELPVILLAGERS = 44;
+        public const int HQ_BEATSUNSHINE1 = 45;
+        public const int HQ_BEATSUNSHINE = 46;
+    }
+
     public static class ArchipelagoConstants
     {
         // The AP game name - must match the apworld's game name exactly

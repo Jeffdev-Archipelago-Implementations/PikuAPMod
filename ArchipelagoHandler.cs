@@ -240,6 +240,12 @@ namespace PikunikuAPMod
             }
         }
 
+        public bool HasReceivedItem(string itemName)
+        {
+            if (Session == null || Session.Items == null) return false;
+            return Session.Items.AllItemsReceived.Any(item => item.ItemName == itemName);
+        }
+
         public bool IsLocationChecked(long id)
         {
             if (Session == null || Session.Locations == null)

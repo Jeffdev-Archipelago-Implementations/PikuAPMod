@@ -26,11 +26,43 @@ public class GameHandler : MonoBehaviour
         UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnSceneLoaded;
     }
 
+#if DEBUG
+    private static bool _pendingBossWarp;
+#endif
+
     private static void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene,
         UnityEngine.SceneManagement.LoadSceneMode _)
     {
-        if (scene.name == "66_PROLOGUE")
+        if (scene.name == Scenes.Prologue)
             PikunikuAPMod.ClientView?.QueueMessage("Tip: Press F2 to skip the intro, and press F1 to unstuck yourself.");
+
+#if DEBUG
+        if (_pendingBossWarp && scene.name == Scenes.MountainVillage)
+        {
+            _pendingBossWarp = false;
+            if (MainStory_Manager.S != null)
+            {
+                MainStory_Manager.S.CurrentSegment = StorySegment_BeforeSecondBoss;
+                Log.Message($"Boss warp: story segment set to {StorySegment_BeforeSecondBoss}");
+            }
+            PikunikuAPMod.ClientView?.QueueMessage($"[Debug] Warped to Mountain Village (story seg {StorySegment_BeforeSecondBoss}). Walk to the boss trigger to test.");
+        }
+#endif
+
+        foreach (var buyable in UnityEngine.Object.FindObjectsOfType<BuyableObject>())
+            HideBuyableIfChecked(buyable);
+    }
+
+    private static void HideBuyableIfChecked(BuyableObject b)
+    {
+        string locationName;
+        if (b.buyType == BuyableObject.BuyType.HAT)
+            locationName = b.hat != null ? HatLocationName(b.hat.UniqueID) : null;
+        else
+            locationName = b.obj != null ? ObjectLocationName(b.obj.UniqueID) : null;
+
+        if (TryGetLocationId(locationName, out long id) && IsChecked(id))
+            b.gameObject.SetActive(false);
     }
 
     private void Start() { }
@@ -48,6 +80,18 @@ public class GameHandler : MonoBehaviour
         if (Input.GetKeyDown((KeyCode.F2)))
             TrySkipCutscene();
 
+#if DEBUG
+        // F3–F6, F9–F11: warp to major areas. F8: second-robot story point (Water Hat gate testing).
+        if (Input.GetKeyDown(KeyCode.F3))  WarpToScene(Scenes.MountainVillage);
+        if (Input.GetKeyDown(KeyCode.F4))  WarpToScene(Scenes.ValleyRoad);
+        if (Input.GetKeyDown(KeyCode.F5))  WarpToScene(Scenes.Forest);
+        if (Input.GetKeyDown(KeyCode.F6))  WarpToScene(Scenes.Lake);
+        if (Input.GetKeyDown(KeyCode.F8))  WarpToSecondBoss();
+        if (Input.GetKeyDown(KeyCode.F9))  WarpToScene(Scenes.Mine);
+        if (Input.GetKeyDown(KeyCode.F10)) WarpToScene(Scenes.HQ);
+        if (Input.GetKeyDown(KeyCode.F11)) WarpToScene(Scenes.Beach);
+#endif
+
         // Apply a received DeathLink on the main thread (flagged from the socket thread).
         if (_pendingDeathLinkKill)
         {
@@ -56,23 +100,48 @@ public class GameHandler : MonoBehaviour
         }
     }
 
-    // MainStory_Const.INTRO_WAKEUP = 0, MOUNTAIN_WHEREAREYOU = 2
-    private const int StorySegment_WakeUp = 0;
-    private const int StorySegment_WhereAmI = 2;
+    private const int StorySegment_WakeUp = StorySegments.INTRO_WAKEUP;
+    private const int StorySegment_WhereAmI = StorySegments.MOUNTAIN_WHEREAREYOU;
+#if DEBUG
+    private const int StorySegment_BeforeSecondBoss = StorySegments.MOUNTAIN_GETBACKMOUNTAIN;
+#endif
 
     private static void TrySkipCutscene()
     {
         string scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
 
-        if (scene == "66_PROLOGUE")
+        if (scene == Scenes.Prologue)
         {
             if (MainStory_Manager.S != null) return;
             Log.Message("Skipping prologue cutscene -> Mountain Village");
             if (MainStory_Manager.S != null) MainStory_Manager.S.CurrentSegment = StorySegment_WhereAmI;
-            UnityEngine.SceneManagement.SceneManager.LoadScene("02_MOUNTAINVILLAGE");
+            UnityEngine.SceneManagement.SceneManager.LoadScene(Scenes.MountainVillage);
             return;
         }
     }
+
+#if DEBUG
+    private static void WarpToScene(string sceneName)
+    {
+        Log.Message($"Debug warp -> {sceneName}");
+        PikunikuAPMod.ClientView?.QueueMessage($"[Debug] Warping to {sceneName}...");
+        if (TransitionModule.S != null && !TransitionModule.S.isPlaying)
+            TransitionModule.S.SceneTransition_Smooth(sceneName, ShouldSave: false);
+        else
+            UnityEngine.SceneManagement.SceneManager.LoadScene(sceneName);
+    }
+
+    private static void WarpToSecondBoss()
+    {
+        Log.Message("Debug warp -> Mountain Village (second-robot story point)");
+        // Set segment now in case MainStory_Manager persists across the load.
+        if (MainStory_Manager.S != null)
+            MainStory_Manager.S.CurrentSegment = StorySegment_BeforeSecondBoss;
+        // Flag so OnSceneLoaded re-applies the segment if MainStory_Manager is recreated.
+        _pendingBossWarp = true;
+        UnityEngine.SceneManagement.SceneManager.LoadScene(Scenes.MountainVillage);
+    }
+#endif
 
     private static void ForceRestartArea()
     {
@@ -646,6 +715,44 @@ public class GameHandler : MonoBehaviour
         }
     }
     
+    // When a shop item (hat or object) is bought, _AddHatWithAnimation/_AddObjectWithAnimation checks
+    // whether you already own it and returns early if so — skipping Hat_Add/Object_Add entirely, which
+    // means the AP check is never sent.  Intercept those coroutine factories when hasBeenBought=true
+    // for shop items and call Hat_Add/Object_Add directly so our existing prefixes can fire.
+    private static IEnumerator ShopPurchaseNoop() { yield break; }
+
+    [HarmonyPatch(typeof(InventoryManager), "_AddHatWithAnimation")]
+    private class InventoryManager_AddHatWithAnimation_Patch
+    {
+        private static bool Prefix(InventoryManager __instance, HatSO ObjectToAdd, bool hasBeenBought,
+            ref IEnumerator __result)
+        {
+            if (!hasBeenBought) return true;
+            if (ObjectToAdd == null || !TryGetLocationId(HatLocationName(ObjectToAdd.UniqueID), out _))
+                return true;
+
+            __instance.Hat_Add(ObjectToAdd); // existing Hat_Add prefix sends AP check and returns false
+            __result = ShopPurchaseNoop();
+            return false;
+        }
+    }
+
+    [HarmonyPatch(typeof(InventoryManager), "_AddObjectWithAnimation")]
+    private class InventoryManager_AddObjectWithAnimation_Patch
+    {
+        private static bool Prefix(InventoryManager __instance, Inventory_Object ObjectToAdd,
+            string WorldName, bool hasBeenBought, ref IEnumerator __result)
+        {
+            if (!hasBeenBought) return true;
+            if (ObjectToAdd == null || !TryGetLocationId(ObjectLocationName(ObjectToAdd.UniqueID), out _))
+                return true;
+
+            __instance.Object_Add(ObjectToAdd, WorldName); // existing Object_Add prefix sends AP check and returns false
+            __result = ShopPurchaseNoop();
+            return false;
+        }
+    }
+
     [HarmonyPatch(typeof(InventoryManager), "Hat_Add")]
     private class InventoryManager_Hat_Add_Patch
     {
@@ -895,9 +1002,9 @@ public class GameHandler : MonoBehaviour
         {
             switch (value)
             {
-                case 24: SendCheck("Defeat the First Giant Robot"); break;
-                case 28: SendCheck("Defeat the Second Giant Robot"); break;
-                case 40: SendCheck("Defeat the Third Giant Robot"); break;
+                case StorySegments.FOREST_CELEBRATEVICTORY: SendCheck("Defeat the First Giant Robot"); break;
+                case StorySegments.FOREST_CELEBRATEVICTORYMOUNTAINBOSS: SendCheck("Defeat the Second Giant Robot"); break;
+                case StorySegments.HQ_OOPS: SendCheck("Defeat the Third Giant Robot"); break;
             }
         }
     }
@@ -997,6 +1104,84 @@ public class GameHandler : MonoBehaviour
                 Log.Debug("InventoryManager started, flushing item queue...");
                 PikunikuAPMod.ItemHandler.FlushQueue();
             }
+        }
+    }
+
+    // Block the second-robot boss event unless the player has the Water Hat.
+    [HarmonyPatch(typeof(Event_MountainVillage_Boss), "EventsCoroutine")]
+    private class Event_MountainVillage_Boss_EventsCoroutine_Patch
+    {
+        private static IEnumerator EmptyCoroutine() { yield break; }
+
+        private static bool Prefix(ref IEnumerator __result)
+        {
+            var ap = PikunikuAPMod.ArchipelagoHandler;
+            if (ap == null || !ap.IsConnected) return true;
+            if (ap.HasReceivedItem("Water Hat")) return true;
+
+            Log.Message("Blocked second robot boss: Water Hat not received from AP");
+            PikunikuAPMod.ClientView?.QueueMessage("You need the Water Hat to fight the second robot!");
+            __result = EmptyCoroutine();
+            return false;
+        }
+    }
+
+    // Block and hide a shop item if its AP location has already been checked.
+    [HarmonyPatch(typeof(BuyableObject), "Buy")]
+    private class BuyableObject_Buy_Patch
+    {
+        private static bool Prefix(BuyableObject __instance)
+        {
+            HideBuyableIfChecked(__instance);
+            string locationName;
+            if (__instance.buyType == BuyableObject.BuyType.HAT)
+                locationName = __instance.hat != null ? HatLocationName(__instance.hat.UniqueID) : null;
+            else
+                locationName = __instance.obj != null ? ObjectLocationName(__instance.obj.UniqueID) : null;
+
+            return !TryGetLocationId(locationName, out long id) || !IsChecked(id);
+        }
+    }
+
+    // ===== Fix: shop becomes uninteractable when AP delivers the shop item to you =====
+    // BuyableObject registers a CanBeTargetCheck delegate that gates the interaction via
+    // Hat_AlreadyInInventory / Object_CheckForTypePossession.  When you own the item (received
+    // from another world via AP), those return true → the shop is blocked before Buy() fires.
+    // Solution: return false for shop-purchase AP locations so the gate always opens, then rely on
+    // BuyableObject_Buy_Patch to block re-purchase once the location is confirmed checked.
+
+    // Protects PutHatOnLoading's Hat_AlreadyInInventory call from the override below, so scene-load
+    // hat re-equip still works for shop hats the player already owns.
+    private static bool _suppressHatOwnershipCheck;
+
+    [HarmonyPatch(typeof(InventoryManager), "PutHatOnLoading")]
+    private class InventoryManager_PutHatOnLoading_Patch
+    {
+        private static void Prefix() => _suppressHatOwnershipCheck = true;
+        private static void Postfix() => _suppressHatOwnershipCheck = false;
+    }
+
+    [HarmonyPatch(typeof(InventoryManager), "Hat_AlreadyInInventory")]
+    private class InventoryManager_Hat_AlreadyInInventory_Patch
+    {
+        private static void Postfix(HatSO hatToCheck, ref bool __result)
+        {
+            if (!__result || _suppressHatOwnershipCheck || hatToCheck == null) return;
+            var locName = HatLocationName(hatToCheck.UniqueID);
+            if (locName != null && locName.IndexOf("Purchase", StringComparison.Ordinal) >= 0)
+                __result = false;
+        }
+    }
+
+    [HarmonyPatch(typeof(InventoryManager), "Object_CheckForTypePossession")]
+    private class InventoryManager_Object_CheckForTypePossession_Patch
+    {
+        private static void Postfix(Inventory_Object ObjectToCheck, ref bool __result)
+        {
+            if (!__result || ObjectToCheck == null) return;
+            var locName = ObjectLocationName(ObjectToCheck.UniqueID);
+            if (locName != null && locName.IndexOf("Purchase", StringComparison.Ordinal) >= 0)
+                __result = false;
         }
     }
 
