@@ -246,6 +246,16 @@ namespace PikunikuAPMod
             return Session.Items.AllItemsReceived.Any(item => item.ItemName == itemName);
         }
 
+        /// <summary>Names of every item the server has sent this slot, one entry per copy.</summary>
+        public List<string> GetAllReceivedItemNames()
+        {
+            var names = new List<string>();
+            if (Session == null || Session.Items == null) return names;
+            foreach (var item in Session.Items.AllItemsReceived)
+                names.Add(item.ItemName);
+            return names;
+        }
+
         public bool IsLocationChecked(long id)
         {
             if (Session == null || Session.Locations == null)

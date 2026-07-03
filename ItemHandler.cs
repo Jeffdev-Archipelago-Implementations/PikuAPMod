@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Archipelago.MultiClient.Net.Models;
 using Pikuniku.Achievements;
+using Pikuniku.Persistence;
 using UnityEngine;
 
 namespace PikunikuAPMod;
@@ -19,8 +20,9 @@ public enum PikunikuItem
 
 public class ItemHandler : MonoBehaviour
 {
-    // net35: no ValueTuple, so use KeyValuePair instead of (int, ItemInfo)
+    // net35: no ValueTuple, so KeyValuePair. Locked: filled on the socket thread, drained on main.
     private readonly Queue<KeyValuePair<int, ItemInfo>> cachedItems = new();
+    private readonly object cacheLock = new();
 
     // A resolved item waiting to be applied on the main thread.
     private struct PendingPopup
@@ -66,7 +68,7 @@ public class ItemHandler : MonoBehaviour
         return true;
     }
 
-    public void HandleItem(int index, ItemInfo item, bool save = true)
+    public void HandleItem(int index, ItemInfo item)
     {
         try
         {
@@ -74,7 +76,8 @@ public class ItemHandler : MonoBehaviour
             if (!IsGameReady())
             {
                 Log.Debug($"Game not ready, caching item: {item.ItemName} (index {index})");
-                cachedItems.Enqueue(new KeyValuePair<int, ItemInfo>(index, item));
+                lock (cacheLock)
+                    cachedItems.Enqueue(new KeyValuePair<int, ItemInfo>(index, item));
                 return;
             }
 
@@ -86,13 +89,13 @@ public class ItemHandler : MonoBehaviour
             }
 
             // Process any cached items first
-            if (cachedItems.Count > 0)
-            {
-                Log.Message($"Processing {cachedItems.Count} cached items...");
+            bool hasCached;
+            lock (cacheLock)
+                hasCached = cachedItems.Count > 0;
+            if (hasCached)
                 FlushQueue();
-            }
 
-            ProcessItem(index, item, save);
+            ProcessItem(index, item);
         }
         catch (Exception ex)
         {
@@ -110,10 +113,16 @@ public class ItemHandler : MonoBehaviour
         }
 
         int processedCount = 0;
-        while (cachedItems.Count > 0)
+        while (true)
         {
-            var cached = cachedItems.Dequeue();
-            ProcessItem(cached.Key, cached.Value, false);
+            KeyValuePair<int, ItemInfo> cached;
+            lock (cacheLock)
+            {
+                if (cachedItems.Count == 0)
+                    break;
+                cached = cachedItems.Dequeue();
+            }
+            ProcessItem(cached.Key, cached.Value);
             processedCount++;
         }
 
@@ -124,7 +133,7 @@ public class ItemHandler : MonoBehaviour
         }
     }
 
-    private void ProcessItem(int index, ItemInfo item, bool save = true)
+    private void ProcessItem(int index, ItemInfo item)
     {
         // Dedup gate (also here, not just HandleItem): FlushQueue replays cached items through
         // ProcessItem without the HandleItem early-out, so already-granted items must skip here too.
@@ -157,31 +166,7 @@ public class ItemHandler : MonoBehaviour
             return;
         }
 
-        // Map the server item to its in-game asset by NAME (authoritative), not numeric ID.
-        // Asset UniqueIDs were confirmed via the F7 dump (GameHandler.DumpIds).
-        long internalId = 0;
-        bool isHat = false;
-
-        switch (item.ItemName)
-        {
-            case "Pencil Hat":    internalId = 1477252700; isHat = true; break;  // Hat_Pencil
-            case "Water Hat":     internalId = 1042229131; isHat = true; break;  // Hat_Water
-            case "Sunglasses":    internalId = 1070275662; isHat = true; break;  // Hat_Sunglasses
-            case "X-Ray Glasses": internalId = 440003900;  isHat = true; break;  // Hat_XrayGlasses
-            case "Flower Hat":    internalId = 1370948795; isHat = true; break;  // Hat_Flower
-            case "Beast Mask":    internalId = 1008585758; isHat = true; break;  // Hat_BeastMask
-            case "Some Arms":     internalId = 1531897703; isHat = true; break;  // Hat_Arms (it's a hat)
-            case "Magnetic Card":                        internalId = 1533686085; break; // Obj_MetroCard
-            case "The Cabin Key":                        internalId = 178453624;  break; // Obj_CabinKey
-            case "A Detonator":                          internalId = 70335859;   break; // Obj_Detonator
-            case "Apple":                                internalId = 1632897859; break; // Obj_Apple
-            case "The Golden Tooth from the Silver Frog": internalId = 1363662089; break; // Obj_GoldenTooth
-            case "A Video Game":                         internalId = 132530138;  break; // Obj_Cartridge
-            case "A Scary Plush":                        internalId = 682565281;  break; // Obj_BeastPlush
-            case "Forest Postcard":                      internalId = 471216775;  break; // Obj_Postcard_Forest
-        }
-
-        if (internalId == 0)
+        if (!TryGetAssetMapping(item.ItemName, out long internalId, out bool isHat))
             Log.Warning($"Unhandled item: {item.ItemName} (ID {item.ItemId})");
 
         // Queue the pickup so Update() plays the popup and adds the item on the main thread.
@@ -222,13 +207,171 @@ public class ItemHandler : MonoBehaviour
 
                 yield return ShowPopup(next);
             }
-            // Save once after the entire queue is drained, not after each individual item.
-            PikunikuAPMod.SaveDataHandler?.SaveGame();
         }
         finally
         {
             isShowingPopups = false;
         }
+    }
+
+    /// <summary>
+    /// F6 recovery: reset hats/objects (keeping the vanilla scarecrow face) and rebuild them
+    /// from the server's received-items list. Coins stay on the indexed queue; trophies are
+    /// only topped up. Returns false when a sync can't run right now.
+    /// </summary>
+    public bool SyncInventory()
+    {
+        try
+        {
+            if (!IsGameReady())
+                return false;
+            var ap = PikunikuAPMod.ArchipelagoHandler;
+            if (ap == null || !ap.IsConnected)
+                return false;
+
+            // Let pending popups grant first; sync again after they've played.
+            lock (popupLock)
+            {
+                if (isShowingPopups || popupQueue.Count > 0)
+                    return false;
+            }
+
+            var received = ap.GetAllReceivedItemNames();
+            // An empty list may just be a slow ReceivedItems packet — never wipe on that.
+            if (received.Count == 0)
+                return false;
+
+            var inv = InventoryManager.S;
+
+            // What the server says we should have.
+            var desiredHats = new List<int>();
+            var desiredObjectCounts = new Dictionary<int, int>();
+            var desiredTrophies = new List<Trophies>();
+            foreach (var itemName in received)
+            {
+                if (TryGetTrophy(itemName, out Trophies trophyId))
+                {
+                    if (!desiredTrophies.Contains(trophyId)) desiredTrophies.Add(trophyId);
+                    continue;
+                }
+                if (itemName == "5 Coins")
+                    continue;
+                if (!TryGetAssetMapping(itemName, out long internalId, out bool isHat))
+                    continue;
+                int id = (int)internalId;
+                if (isHat)
+                {
+                    if (!desiredHats.Contains(id)) desiredHats.Add(id);
+                }
+                else
+                {
+                    desiredObjectCounts[id] = (desiredObjectCounts.TryGetValue(id, out int n) ? n : 0) + 1;
+                }
+            }
+
+            bool changed = false;
+
+            // --- Objects: reset to exactly the received copies. Scarecrow face is vanilla-managed. ---
+            var currentObjectCounts = new Dictionary<int, int>();
+            foreach (var entry in inv.ObjectInventory)
+            {
+                if (entry.ID == GameHandler.ScarecrowFaceId) continue;
+                currentObjectCounts[entry.ID] = (currentObjectCounts.TryGetValue(entry.ID, out int n) ? n : 0) + entry.Count.Count;
+            }
+
+            if (!SameCounts(currentObjectCounts, desiredObjectCounts))
+            {
+                inv.ObjectInventory.RemoveAll(e => e.ID != GameHandler.ScarecrowFaceId);
+                IsReceivingItem = true;
+                try
+                {
+                    foreach (var kv in desiredObjectCounts)
+                    {
+                        if (!inv.ObjectDico.TryGetValue(kv.Key, out Inventory_Object asset))
+                        {
+                            Log.Warning($"Sync: no Inventory_Object with UniqueID {kv.Key} in ObjectsDatabase");
+                            continue;
+                        }
+                        for (int i = 0; i < kv.Value; i++)
+                            inv.Object_Add(asset, "", SetupComp: false);
+                    }
+                }
+                finally
+                {
+                    IsReceivingItem = false;
+                }
+                changed = true;
+            }
+
+            // --- Hats: slot 0 is the game's null hat; rebuild the rest from server state. ---
+            int nullHatId = inv.NullHat != null ? inv.NullHat.UniqueID : -1;
+            var currentHats = new List<int>();
+            foreach (int id in inv.HatInventory)
+                if (id != nullHatId) currentHats.Add(id);
+
+            if (currentHats.Count != desiredHats.Count || !desiredHats.All(currentHats.Contains))
+            {
+                inv.HatInventory.Clear();
+                inv.HatInventory.Add(nullHatId);
+                IsReceivingItem = true;
+                try
+                {
+                    foreach (int id in desiredHats)
+                    {
+                        if (!inv.HatDico.TryGetValue(id, out HatSO hat))
+                        {
+                            Log.Warning($"Sync: no HatSO with UniqueID {id} in HatsDatabase");
+                            continue;
+                        }
+                        inv.Hat_Add(hat, SetupComp: false);
+                    }
+                }
+                finally
+                {
+                    IsReceivingItem = false;
+                }
+                changed = true;
+            }
+
+            // --- Trophies: top up any the server granted that never registered. ---
+            foreach (var trophyId in desiredTrophies)
+            {
+                var probe = ScriptableObject.CreateInstance<Trophy>();
+                probe.achievementID = trophyId;
+                bool missing = TrophiesManager.S.GetTrophyState(probe) == TrophyState.None;
+                Destroy(probe);
+                if (missing)
+                {
+                    GrantTrophy(trophyId);
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                inv.SetupAllCompartments();
+                inv.Save();
+                Log.Message("Inventory synced to Archipelago server state");
+            }
+            else
+            {
+                Log.Message("Inventory already matches Archipelago server state");
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"SyncInventory Error: {ex}");
+            return false;
+        }
+    }
+
+    private static bool SameCounts(Dictionary<int, int> a, Dictionary<int, int> b)
+    {
+        if (a.Count != b.Count) return false;
+        foreach (var kv in a)
+            if (!b.TryGetValue(kv.Key, out int n) || n != kv.Value) return false;
+        return true;
     }
 
     private IEnumerator ShowPopup(PendingPopup pending)
@@ -251,20 +394,24 @@ public class ItemHandler : MonoBehaviour
             yield break;
         }
 
-        // Resolve the asset on the main thread.
+        // Resolve via the ID dictionaries — built from the full databases in Awake, so unlike
+        // Resources.FindObjectsOfTypeAll they can't miss a not-yet-loaded asset.
         HatSO hat = null;
         Inventory_Object obj = null;
         if (pending.InternalId != 0)
         {
+            while (InventoryManager.S == null)
+                yield return null;
+
             if (pending.IsHat)
             {
-                hat = Resources.FindObjectsOfTypeAll<HatSO>().FirstOrDefault(h => h.UniqueID == pending.InternalId);
-                if (hat == null) Log.Warning($"Could not find HatSO with UniqueID {pending.InternalId}");
+                InventoryManager.S.HatDico.TryGetValue((int)pending.InternalId, out hat);
+                if (hat == null) Log.Warning($"No HatSO with UniqueID {pending.InternalId} in HatsDatabase");
             }
             else
             {
-                obj = Resources.FindObjectsOfTypeAll<Inventory_Object>().FirstOrDefault(o => o.UniqueID == pending.InternalId);
-                if (obj == null) Log.Warning($"Could not find Inventory_Object with UniqueID {pending.InternalId}");
+                InventoryManager.S.ObjectDico.TryGetValue((int)pending.InternalId, out obj);
+                if (obj == null) Log.Warning($"No Inventory_Object with UniqueID {pending.InternalId} in ObjectsDatabase");
             }
         }
 
@@ -295,14 +442,17 @@ public class ItemHandler : MonoBehaviour
         AdvanceIndex(pending.Index);
     }
 
-    // Advance the processed-item index after an item is applied; mid-apply close replays just that one.
+    // Advance the processed-item index and save, so a crash replays at most the item in flight.
     private void AdvanceIndex(int index)
     {
         try
         {
             var saveData = PikunikuAPMod.SaveDataHandler?.SaveData;
             if (saveData != null && index >= saveData.ItemIndex)
+            {
                 saveData.ItemIndex = index + 1;
+                PikunikuAPMod.SaveDataHandler.SaveGame();
+            }
         }
         catch (Exception ex)
         {
@@ -350,6 +500,35 @@ public class ItemHandler : MonoBehaviour
         {
             Log.Error($"Failed to grant {amount} coins: {ex}");
         }
+    }
+
+    // Map a server item name to its in-game asset by NAME (authoritative), not numeric ID.
+    // Asset UniqueIDs were confirmed via the F7 dump (GameHandler.DumpIds).
+    private static bool TryGetAssetMapping(string itemName, out long internalId, out bool isHat)
+    {
+        internalId = 0;
+        isHat = false;
+
+        switch (itemName)
+        {
+            case "Pencil Hat":    internalId = 1477252700; isHat = true; break;  // Hat_Pencil
+            case "Water Hat":     internalId = 1042229131; isHat = true; break;  // Hat_Water
+            case "Sunglasses":    internalId = 1070275662; isHat = true; break;  // Hat_Sunglasses
+            case "X-Ray Glasses": internalId = 440003900;  isHat = true; break;  // Hat_XrayGlasses
+            case "Flower Hat":    internalId = 1370948795; isHat = true; break;  // Hat_Flower
+            case "Beast Mask":    internalId = 1008585758; isHat = true; break;  // Hat_BeastMask
+            case "Some Arms":     internalId = 1531897703; isHat = true; break;  // Hat_Arms (it's a hat)
+            case "Magnetic Card":                        internalId = 1533686085; break; // Obj_MetroCard
+            case "The Cabin Key":                        internalId = 178453624;  break; // Obj_CabinKey
+            case "A Detonator":                          internalId = 70335859;   break; // Obj_Detonator
+            case "Apple":                                internalId = 1632897859; break; // Obj_Apple
+            case "The Golden Tooth from the Silver Frog": internalId = 1363662089; break; // Obj_GoldenTooth
+            case "A Video Game":                         internalId = 132530138;  break; // Obj_Cartridge
+            case "A Scary Plush":                        internalId = 682565281;  break; // Obj_BeastPlush
+            case "Forest Postcard":                      internalId = 471216775;  break; // Obj_Postcard_Forest
+        }
+
+        return internalId != 0;
     }
 
     // Map a server item name to its in-game trophy. Returns false for non-trophy items.

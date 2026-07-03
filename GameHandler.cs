@@ -14,7 +14,7 @@ namespace PikunikuAPMod;
 public class GameHandler : MonoBehaviour
 {
     // The scarecrow face is kept fully vanilla: never a check, grant, or AP popup override.
-    private const int ScarecrowFaceId = 1358097203;
+    internal const int ScarecrowFaceId = 1358097203;
 
     private void Awake()
     {
@@ -34,7 +34,9 @@ public class GameHandler : MonoBehaviour
         UnityEngine.SceneManagement.LoadSceneMode _)
     {
         if (scene.name == Scenes.Prologue)
-            PikunikuAPMod.ClientView?.QueueMessage("Tip: Press F2 to skip the intro, and press F1 to unstuck yourself.");
+            PikunikuAPMod.ClientView?.QueueMessage(
+                "Tip: Press F2 to skip the intro, and press F1 to unstuck yourself. "
+                + "Press F6 to resync your inventory with the server if an item ever goes missing.");
 
 #if DEBUG
         if (_pendingBossWarp && scene.name == Scenes.MountainVillage)
@@ -80,16 +82,21 @@ public class GameHandler : MonoBehaviour
         if (Input.GetKeyDown((KeyCode.F2)))
             TrySkipCutscene();
 
+        // F6: resync the inventory from server state.
+        if (Input.GetKeyDown(KeyCode.F6))
+            TrySyncInventory();
+
 #if DEBUG
-        // F3–F6, F9–F11: warp to major areas. F8: second-robot story point (Water Hat gate testing).
+        // F3–F5, F9–F12: warp to major areas. F8: second-robot story point (Water Hat gate testing).
+        // (F6 is the inventory-sync key.)
         if (Input.GetKeyDown(KeyCode.F3))  WarpToScene(Scenes.MountainVillage);
         if (Input.GetKeyDown(KeyCode.F4))  WarpToScene(Scenes.ValleyRoad);
         if (Input.GetKeyDown(KeyCode.F5))  WarpToScene(Scenes.Forest);
-        if (Input.GetKeyDown(KeyCode.F6))  WarpToScene(Scenes.Lake);
         if (Input.GetKeyDown(KeyCode.F8))  WarpToSecondBoss();
         if (Input.GetKeyDown(KeyCode.F9))  WarpToScene(Scenes.Mine);
         if (Input.GetKeyDown(KeyCode.F10)) WarpToScene(Scenes.HQ);
         if (Input.GetKeyDown(KeyCode.F11)) WarpToScene(Scenes.Beach);
+        if (Input.GetKeyDown(KeyCode.F12)) WarpToScene(Scenes.Lake);
 #endif
 
         // Apply a received DeathLink on the main thread (flagged from the socket thread).
@@ -98,6 +105,14 @@ public class GameHandler : MonoBehaviour
             _pendingDeathLinkKill = false;
             ApplyDeathLinkKill();
         }
+    }
+
+    private static void TrySyncInventory()
+    {
+        if (PikunikuAPMod.ItemHandler != null && PikunikuAPMod.ItemHandler.SyncInventory())
+            PikunikuAPMod.ClientView?.QueueMessage("Inventory synced with the server.");
+        else
+            PikunikuAPMod.ClientView?.QueueMessage("Can't sync inventory right now (not connected, not in game, or items still arriving).");
     }
 
     private const int StorySegment_WakeUp = StorySegments.INTRO_WAKEUP;
@@ -1142,16 +1157,7 @@ public class GameHandler : MonoBehaviour
             return !TryGetLocationId(locationName, out long id) || !IsChecked(id);
         }
     }
-
-    // ===== Fix: shop becomes uninteractable when AP delivers the shop item to you =====
-    // BuyableObject registers a CanBeTargetCheck delegate that gates the interaction via
-    // Hat_AlreadyInInventory / Object_CheckForTypePossession.  When you own the item (received
-    // from another world via AP), those return true → the shop is blocked before Buy() fires.
-    // Solution: return false for shop-purchase AP locations so the gate always opens, then rely on
-    // BuyableObject_Buy_Patch to block re-purchase once the location is confirmed checked.
-
-    // Protects PutHatOnLoading's Hat_AlreadyInInventory call from the override below, so scene-load
-    // hat re-equip still works for shop hats the player already owns.
+    
     private static bool _suppressHatOwnershipCheck;
 
     [HarmonyPatch(typeof(InventoryManager), "PutHatOnLoading")]
