@@ -220,21 +220,27 @@ namespace PikunikuAPMod
         {
             while (true)
             {
-                long locationId = 0;
-                var hasLocation = false;
+                long[] batch = null;
                 lock (queueLock)
                 {
                     if (locationsToCheck.Count > 0)
                     {
-                        locationId = locationsToCheck.Dequeue();
-                        hasLocation = true;
+                        batch = locationsToCheck.ToArray();
+                        locationsToCheck.Clear();
                     }
                 }
 
-                if (hasLocation)
+                if (batch != null)
                 {
-                    Session.Locations.CompleteLocationChecks(locationId);
-                    Log.Message($"Sent location check: {locationId}");
+                    // Async send checks to prevent freezing
+                    Session.Locations.CompleteLocationChecksAsync(
+                        success =>
+                        {
+                            if (!success)
+                                Log.Warning($"Failed to send {batch.Length} location check(s); is your connection up?");
+                        },
+                        batch);
+                    Log.Message($"Sent {batch.Length} location check(s): {string.Join(", ", batch.Select(id => id.ToString()).ToArray())}");
                 }
                 yield return new WaitForSeconds(0.1f);
             }

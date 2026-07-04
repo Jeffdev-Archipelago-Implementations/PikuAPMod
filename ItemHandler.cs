@@ -350,7 +350,7 @@ public class ItemHandler : MonoBehaviour
             if (changed)
             {
                 inv.SetupAllCompartments();
-                inv.Save();
+                SaveGameToDisk();
                 Log.Message("Inventory synced to Archipelago server state");
             }
             else
@@ -452,11 +452,29 @@ public class ItemHandler : MonoBehaviour
             {
                 saveData.ItemIndex = index + 1;
                 PikunikuAPMod.SaveDataHandler.SaveGame();
+                SaveGameToDisk();
             }
         }
         catch (Exception ex)
         {
             Log.Error($"Failed to advance item index: {ex}");
+        }
+    }
+
+    // The game only writes saves to disk in SlotManager.Save (world pickups, area changes) —
+    // Block.Save alone just stages into CustomPlayerPrefs. Stage our blocks and flush ourselves,
+    // or granted items are lost on quit.
+    private static void SaveGameToDisk()
+    {
+        try
+        {
+            if (InventoryManager.S != null) InventoryManager.S.Save();
+            if (DataManager.S != null) DataManager.S.Save();
+            CustomPlayerPrefs.Save();
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Failed to write game save: {ex}");
         }
     }
 

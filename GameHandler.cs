@@ -671,7 +671,7 @@ public class GameHandler : MonoBehaviour
         if (TryGetLocationId(locationName, out long id))
         {
             Log.Info($"Sending AP Check for {locationName} ({id})");
-            PikunikuAPMod.ArchipelagoHandler?.CheckLocation(id);
+            PikunikuAPMod.ArchipelagoHandler!.CheckLocation(id);
         }
     }
     

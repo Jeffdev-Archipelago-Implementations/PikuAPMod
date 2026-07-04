@@ -40,3 +40,4 @@ Assembly-CSharp.dll
 # Packaged output
 /output/*.zip
 /Package/Pikuniku_Archipelago/*.dll
+/output
