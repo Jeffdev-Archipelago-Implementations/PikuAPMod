@@ -191,10 +191,30 @@ namespace PikunikuAPMod
             }
         }
 
+        // Stupid .NET 3.5 has stupid main thread problems and this fixes it so here it is
+        private static void SendOffMainThread(string what, Action send)
+        {
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    send();
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning($"{what} failed: {ex.Message}");
+                }
+            });
+        }
+
         public void SetGoal()
         {
-            Session.SetGoalAchieved();
-            Session.SetClientState(ArchipelagoClientState.ClientGoal);
+            var session = Session;
+            SendOffMainThread("Goal send", () =>
+            {
+                session.SetGoalAchieved();
+                session.SetClientState(ArchipelagoClientState.ClientGoal);
+            });
         }
 
         public void CheckLocations(long[] ids)
@@ -232,15 +252,33 @@ namespace PikunikuAPMod
 
                 if (batch != null)
                 {
-                    // Async send checks to prevent freezing
-                    Session.Locations.CompleteLocationChecksAsync(
-                        success =>
+                    var session = Session;
+                    System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                    {
+                        try
                         {
-                            if (!success)
-                                Log.Warning($"Failed to send {batch.Length} location check(s); is your connection up?");
-                        },
-                        batch);
-                    Log.Message($"Sent {batch.Length} location check(s): {string.Join(", ", batch.Select(id => id.ToString()).ToArray())}");
+                            // CompleteLocationChecksAsync still blocks (see SendOffMainThread),
+                            // but here it only stalls a pool thread, not the frame.
+                            session.Locations.CompleteLocationChecksAsync(
+                                success =>
+                                {
+                                    if (!success)
+                                        Log.Warning($"Failed to send {batch.Length} location check(s); is your connection up?");
+                                },
+                                batch);
+                            Log.Message($"Sent {batch.Length} location check(s): {string.Join(", ", batch.Select(id => id.ToString()).ToArray())}");
+                        }
+                        catch (Exception ex)
+                        {
+                            // Put the batch back so the checks go out after a reconnect.
+                            Log.Warning($"Failed to send {batch.Length} location check(s) ({ex.Message}); requeueing.");
+                            lock (queueLock)
+                            {
+                                foreach (var id in batch)
+                                    locationsToCheck.Enqueue(id);
+                            }
+                        }
+                    });
                 }
                 yield return new WaitForSeconds(0.1f);
             }
@@ -285,7 +323,8 @@ namespace PikunikuAPMod
                 Tags = tags.ToArray(),
                 ItemsHandling = ItemsHandlingFlags.AllItems
             };
-            Session.Socket.SendPacket(packet);
+            var session = Session;
+            SendOffMainThread("Tag update", () => session.Socket.SendPacket(packet));
         }
 
         // DeathLink active state: On/Off force it; YamlSetting follows the slot's yaml option.
@@ -385,7 +424,8 @@ namespace PikunikuAPMod
             };
 
             lastDeathLinkTime = now;
-            Session.Socket.SendPacket(packet);
+            var session = Session;
+            SendOffMainThread("DeathLink send", () => session.Socket.SendPacket(packet));
         }
 
         private void BouncePacketReceived(BouncePacket packet)
@@ -429,11 +469,13 @@ namespace PikunikuAPMod
         /// </summary>
         public void ScoutLocation(long locationId, Action<ScoutedItemInfo> callback, bool createHint = false)
         {
-            Session.Locations.ScoutLocationsAsync(results =>
-            {
-                if (results != null && results.Count > 0)
-                    callback?.Invoke(results.Values.First());
-            }, createHint, locationId);
+            var session = Session;
+            SendOffMainThread("Location scout", () =>
+                session.Locations.ScoutLocationsAsync(results =>
+                {
+                    if (results != null && results.Count > 0)
+                        callback?.Invoke(results.Values.First());
+                }, createHint, locationId));
         }
 
         public string GetPlayerName(int player)

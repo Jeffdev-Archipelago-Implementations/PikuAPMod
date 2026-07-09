@@ -33,6 +33,20 @@ public class GameHandler : MonoBehaviour
     private static void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene,
         UnityEngine.SceneManagement.LoadSceneMode _)
     {
+#if DEBUG
+        // Each scene gets a fresh camera, so a zoom toggled in the old scene is moot.
+        _levelZoomActive = false;
+#endif
+
+        // Quitting back to the main menu ends the session. The IsConnected gate keeps
+        // the title screen on startup (not yet connected) from logging a disconnect.
+        if (scene.name == Scenes.TitleScreen && PikunikuAPMod.ArchipelagoHandler != null
+            && PikunikuAPMod.ArchipelagoHandler.IsConnected)
+        {
+            Log.Message("Returned to the title screen, disconnecting from Archipelago");
+            PikunikuAPMod.ArchipelagoHandler.Disconnect();
+        }
+
         if (scene.name == Scenes.Prologue)
             PikunikuAPMod.ClientView?.QueueMessage(
                 "Tip: Press F2 to skip the intro, and press F1 to unstuck yourself. "
@@ -87,6 +101,10 @@ public class GameHandler : MonoBehaviour
             TrySyncInventory();
 
 #if DEBUG
+        // T: toggle a full-level camera zoom (for taking screenshots of the whole level).
+        if (Input.GetKeyDown(KeyCode.T))
+            ToggleLevelZoom();
+
         // F3–F5, F9–F12: warp to major areas. F8: second-robot story point (Water Hat gate testing).
         // (F6 is the inventory-sync key.)
         if (Input.GetKeyDown(KeyCode.F3))  WarpToScene(Scenes.MountainVillage);
@@ -106,6 +124,51 @@ public class GameHandler : MonoBehaviour
             ApplyDeathLinkKill();
         }
     }
+
+#if DEBUG
+    private static bool _levelZoomActive;
+    private static Vector3 _savedCamPos;
+    private static float _savedCamSize;
+
+    private static void ToggleLevelZoom()
+    {
+        PikuCamera cam = PikuCamera_SinglePlayer.S;
+        if (cam == null) cam = FindObjectOfType<PikuCamera>();
+        if (cam == null || cam.camComp == null || cam.camRig == null)
+        {
+            PikunikuAPMod.ClientView?.QueueMessage("Level zoom: no camera found in this scene.");
+            return;
+        }
+
+        if (!_levelZoomActive)
+        {
+            var worldBounds = LevelSpecific.S != null ? LevelSpecific.S.worldBounds : null;
+            if (worldBounds == null)
+            {
+                PikunikuAPMod.ClientView?.QueueMessage("Level zoom: this scene has no world bounds.");
+                return;
+            }
+
+            _savedCamPos = cam.camRig.position;
+            _savedCamSize = cam.camComp.orthographicSize;
+
+            // Manual mode stops CameraUpdate from following the player / re-clamping size.
+            cam.isManual = true;
+            cam.camRig.position = new Vector3(
+                worldBounds.bounds.center.x, worldBounds.bounds.center.y, _savedCamPos.z);
+            cam.camComp.orthographicSize = CameraHelper.CalculateOrthographicSize(worldBounds.bounds);
+            _levelZoomActive = true;
+        }
+        else
+        {
+            cam.camRig.position = _savedCamPos;
+            cam.camComp.orthographicSize = _savedCamSize;
+            // Leaving manual mode re-records lastPosition/lastSize, so the follow resumes cleanly.
+            cam.isManual = false;
+            _levelZoomActive = false;
+        }
+    }
+#endif
 
     private static void TrySyncInventory()
     {

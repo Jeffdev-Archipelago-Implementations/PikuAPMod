@@ -9,7 +9,6 @@ using UnityEngine;
 
 namespace PikunikuAPMod
 {
-    // How DeathLink is decided: forced On, forced Off, or follow the slot's yaml option.
     public enum DeathLinkMode { On, Off, YamlSetting }
 
     [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
@@ -17,7 +16,7 @@ namespace PikunikuAPMod
     {
         private const string PluginGuid = "PikunikuAPMod";
         private const string PluginName = "Pikuniku Archipelago Mod";
-        private const string PluginVersion = "0.3.3";
+        private const string PluginVersion = "0.3.4";
         private const string PluginAuthor = "Jeffdev";
         public static string PluginDir;
         private readonly Harmony harmony = new(PluginGuid);
