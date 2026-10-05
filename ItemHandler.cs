@@ -9,15 +9,6 @@ using UnityEngine;
 
 namespace PikunikuAPMod;
 
-// TODO: Define your items here. IDs are relative to ArchipelagoConstants.BaseId
-// and must match the apworld's item table.
-public enum PikunikuItem
-{
-    // ProgressiveExample = 0x1,
-    // SomeTrap = 0x10,
-    // SomeFiller = 0x20,
-}
-
 public class ItemHandler : MonoBehaviour
 {
     // net35: no ValueTuple, so KeyValuePair. Locked: filled on the socket thread, drained on main.

@@ -944,10 +944,10 @@ public class GameHandler : MonoBehaviour
             if (!PikunikuAPMod.ArchipelagoHandler.IsConnected) return;
             var randomColor = Color.HSVToRGB(UnityEngine.Random.value, 0.75f, 0.9f);
             var slotColorData = PikunikuAPMod.SlotData.PikuColor;
-        
-            if (slotColorData == "0") return; // Off
-        
-            if (slotColorData == "1") // Random per screen
+            
+            if (string.IsNullOrEmpty(slotColorData) || slotColorData == "off" || slotColorData == "0") return;
+
+            if (slotColorData == "random_per_screen" || slotColorData == "1")
             {
                 __instance.Set_BodyColor(randomColor);
                 __instance.default_bodyColor = randomColor;
