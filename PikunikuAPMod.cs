@@ -16,7 +16,7 @@ namespace PikunikuAPMod
     {
         private const string PluginGuid = "PikunikuAPMod";
         private const string PluginName = "Pikuniku Archipelago Mod";
-        private const string PluginVersion = "0.3.4";
+        public const string PluginVersion = "0.3.5";
         private const string PluginAuthor = "Jeffdev";
         public static string PluginDir;
         private readonly Harmony harmony = new(PluginGuid);

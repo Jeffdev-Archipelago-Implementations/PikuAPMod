@@ -27,7 +27,10 @@ public class GameHandler : MonoBehaviour
     }
 
 #if DEBUG
-    private static bool _pendingBossWarp;
+    // Story segment to apply once a debug warp's target scene has finished loading.
+    // Null scene means nothing is pending.
+    private static string _pendingWarpScene;
+    private static int _pendingWarpSegment;
 #endif
 
     private static void OnSceneLoaded(UnityEngine.SceneManagement.Scene scene,
@@ -38,13 +41,15 @@ public class GameHandler : MonoBehaviour
         _levelZoomActive = false;
 #endif
 
-        // Quitting back to the main menu ends the session. The IsConnected gate keeps
-        // the title screen on startup (not yet connected) from logging a disconnect.
-        if (scene.name == Scenes.TitleScreen && PikunikuAPMod.ArchipelagoHandler != null
-            && PikunikuAPMod.ArchipelagoHandler.IsConnected)
+        if (scene.name == Scenes.TitleScreen)
         {
-            Log.Message("Returned to the title screen, disconnecting from Archipelago");
-            PikunikuAPMod.ArchipelagoHandler.Disconnect();
+            AppendModVersion();
+            
+            if (PikunikuAPMod.ArchipelagoHandler != null && PikunikuAPMod.ArchipelagoHandler.IsConnected)
+            {
+                Log.Message("Returned to the title screen, disconnecting from Archipelago");
+                PikunikuAPMod.ArchipelagoHandler.Disconnect();
+            }
         }
 
         if (scene.name == Scenes.Prologue)
@@ -53,15 +58,26 @@ public class GameHandler : MonoBehaviour
                 + "Press F6 to resync your inventory with the server if an item ever goes missing.");
 
 #if DEBUG
-        if (_pendingBossWarp && scene.name == Scenes.MountainVillage)
+        if (_pendingWarpScene != null && scene.name == _pendingWarpScene)
         {
-            _pendingBossWarp = false;
+            int segment = _pendingWarpSegment;
+            _pendingWarpScene = null;
             if (MainStory_Manager.S != null)
             {
-                MainStory_Manager.S.CurrentSegment = StorySegment_BeforeSecondBoss;
-                Log.Message($"Boss warp: story segment set to {StorySegment_BeforeSecondBoss}");
+                // StartNewSegment rather than the raw setter, so the slot is written to disk and the
+                // objective banner updates — reload-path testing needs the segment to actually stick.
+                try
+                {
+                    MainStory_Manager.S.StartNewSegment(segment);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning($"StartNewSegment({segment}) failed this early in the load, setting it directly: {ex.Message}");
+                    MainStory_Manager.S.CurrentSegment = segment;
+                }
+                Log.Message($"Debug warp: story segment set to {segment}");
             }
-            PikunikuAPMod.ClientView?.QueueMessage($"[Debug] Warped to Mountain Village (story seg {StorySegment_BeforeSecondBoss}). Walk to the boss trigger to test.");
+            PikunikuAPMod.ClientView?.QueueMessage($"[Debug] Warped to {scene.name} (story seg {segment}).");
         }
 #endif
 
@@ -78,7 +94,66 @@ public class GameHandler : MonoBehaviour
             locationName = b.obj != null ? ObjectLocationName(b.obj.UniqueID) : null;
 
         if (TryGetLocationId(locationName, out long id) && IsChecked(id))
+        {
+            b.hasBeenBought = true;
             b.gameObject.SetActive(false);
+        }
+    }
+    
+    private static void MarkBoughtIfOwned(BuyableObject b)
+    {
+        var inv = InventoryManager.S;
+        if (b == null || inv == null || b.hasBeenBought) return;
+
+        bool owned;
+        if (b.buyType == BuyableObject.BuyType.HAT)
+        {
+            if (b.hat == null) return;
+            _suppressHatOwnershipCheck = true;
+            try { owned = inv.Hat_AlreadyInInventory(b.hat); }
+            finally { _suppressHatOwnershipCheck = false; }
+        }
+        else
+        {
+            owned = b.obj != null && inv.Object_AlreadyInInventory(b.obj, b.worldName);
+        }
+
+        if (owned) b.hasBeenBought = true;
+    }
+
+    private static void RefreshBuyablesOwnership()
+    {
+        foreach (var buyable in UnityEngine.Object.FindObjectsOfType<BuyableObject>())
+            MarkBoughtIfOwned(buyable);
+    }
+    
+    private const string VersionLabelName = "VersionNumber";
+
+    private static void AppendModVersion()
+    {
+        string suffix = $"Archipelago {PikunikuAPMod.PluginVersion}";
+        
+        foreach (var text in Resources.FindObjectsOfTypeAll<TMPro.TMP_Text>())
+        {
+            if (text.name != VersionLabelName || text.text.EndsWith(suffix, StringComparison.Ordinal))
+                continue;
+
+            text.text = $"{text.text}\n{suffix}";
+            Log.Info($"Title screen version label -> '{text.text}'");
+            return;
+        }
+
+        foreach (var text in Resources.FindObjectsOfTypeAll<UnityEngine.UI.Text>())
+        {
+            if (text.name != VersionLabelName || text.text.EndsWith(suffix, StringComparison.Ordinal))
+                continue;
+
+            text.text = $"{text.text}\n{suffix}";
+            Log.Info($"Title screen version label -> '{text.text}'");
+            return;
+        }
+
+        Log.Warning($"No '{VersionLabelName}' text found on the title screen, mod version not shown");
     }
 
     private void Start() { }
@@ -105,12 +180,14 @@ public class GameHandler : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.T))
             ToggleLevelZoom();
 
-        // F3–F5, F9–F12: warp to major areas. F8: second-robot story point (Water Hat gate testing).
+        // F3–F4, F9–F12: warp to major areas. Two warps also force a story segment:
+        // F5 -> Forest at FOREST_GETSWAGGY (disco bouncer / glasses-shop gate testing),
+        // F8 -> Mountain Village before the second robot (Water Hat gate testing).
         // (F6 is the inventory-sync key.)
         if (Input.GetKeyDown(KeyCode.F3))  WarpToScene(Scenes.MountainVillage);
         if (Input.GetKeyDown(KeyCode.F4))  WarpToScene(Scenes.ValleyRoad);
-        if (Input.GetKeyDown(KeyCode.F5))  WarpToScene(Scenes.Forest);
-        if (Input.GetKeyDown(KeyCode.F8))  WarpToSecondBoss();
+        if (Input.GetKeyDown(KeyCode.F5))  WarpToSegment(Scenes.Forest, StorySegments.FOREST_GETSWAGGY);
+        if (Input.GetKeyDown(KeyCode.F8))  WarpToSegment(Scenes.MountainVillage, StorySegment_BeforeSecondBoss);
         if (Input.GetKeyDown(KeyCode.F9))  WarpToScene(Scenes.Mine);
         if (Input.GetKeyDown(KeyCode.F10)) WarpToScene(Scenes.HQ);
         if (Input.GetKeyDown(KeyCode.F11)) WarpToScene(Scenes.Beach);
@@ -209,15 +286,15 @@ public class GameHandler : MonoBehaviour
             UnityEngine.SceneManagement.SceneManager.LoadScene(sceneName);
     }
 
-    private static void WarpToSecondBoss()
+    // Warp to a scene and force the story to a given segment once it has loaded. Applying the segment
+    // on arrival (rather than before the load) keeps the scene's own event scripts from setting up
+    // against the old segment.
+    private static void WarpToSegment(string sceneName, int segment)
     {
-        Log.Message("Debug warp -> Mountain Village (second-robot story point)");
-        // Set segment now in case MainStory_Manager persists across the load.
-        if (MainStory_Manager.S != null)
-            MainStory_Manager.S.CurrentSegment = StorySegment_BeforeSecondBoss;
-        // Flag so OnSceneLoaded re-applies the segment if MainStory_Manager is recreated.
-        _pendingBossWarp = true;
-        UnityEngine.SceneManagement.SceneManager.LoadScene(Scenes.MountainVillage);
+        Log.Message($"Debug warp -> {sceneName} (story segment {segment})");
+        _pendingWarpScene = sceneName;
+        _pendingWarpSegment = segment;
+        UnityEngine.SceneManagement.SceneManager.LoadScene(sceneName);
     }
 #endif
 
@@ -854,6 +931,9 @@ public class GameHandler : MonoBehaviour
 
             return true;
         }
+        
+        // Update the ownership of hats to fix the bouncer
+        private static void Postfix() => RefreshBuyablesOwnership();
     }
 
     [HarmonyPatch(typeof(Piku), "SetDefaultProperties")]
@@ -1219,6 +1299,12 @@ public class GameHandler : MonoBehaviour
 
             return !TryGetLocationId(locationName, out long id) || !IsChecked(id);
         }
+    }
+    
+    [HarmonyPatch(typeof(BuyableObject), "Start")]
+    private class BuyableObject_Start_Patch
+    {
+        private static void Postfix(BuyableObject __instance) => MarkBoughtIfOwned(__instance);
     }
     
     private static bool _suppressHatOwnershipCheck;
